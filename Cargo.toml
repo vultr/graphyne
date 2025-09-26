@@ -1,0 +1,7 @@
+[package]
+name = "graphite-rs"
+version = "0.1.0"
+edition = "2024"
+description = "A simple rust client for sending messages to Graphite"
+
+[dependencies]
