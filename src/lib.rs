@@ -27,8 +27,22 @@ impl GraphiteClient {
     }
 
     pub fn reconnect(&mut self) -> Result<(), GraphiteError> {
-        self.connection = TcpStream::connect_timeout(&self.sock_addr, Duration::from_secs(5))?;
-        Ok(())
+        let mut last_err: Error = Error::last_os_error();
+        let mut i = 0;
+        while i < RETRIES {
+            let connect = TcpStream::connect_timeout(&self.sock_addr, Duration::from_secs(5));
+            match connect {
+                Ok(connect) => {
+                    self.connection = connect;
+                    return Ok(());
+                }
+                Err(err) => last_err = err,
+            }
+            i += 1;
+        }
+        Err(GraphiteError {
+            msg: format!("Graphite Error: {last_err}"),
+        })
     }
 
     pub fn send_message(&mut self, msg: &GraphiteMessage) -> Result<usize, GraphiteError> {
