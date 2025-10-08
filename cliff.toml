@@ -83,7 +83,6 @@ commit_preprocessors = [
 # regex for parsing and grouping commits
 commit_parsers = [
   { message = "^Merge", skip = true },
-  { message = "^chore", skip = true },
 
   # Changing the order of the items below will determine the order they are processed (first match wins)
   { message = "(?i)feat", group = "<!-- 0 -->⛰️" },

@@ -3,9 +3,16 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.2.0](https://github.com/vultr/graphyne/-/compare/v0.1.1..v0.2.0) - 2025-10-08
+
+- 🏗️ Release graphyne version 0.2.0 ([c48bc02](https://github.com/vultr/graphyne/-/commit/c48bc028a3cc13afebb4e09d8e6cf39b69d2d546))
+- 🏗️ Update release config ([597a685](https://github.com/vultr/graphyne/-/commit/597a685bfda78e0a273571478a2fe1e11db2f747))
+- 📦 Add cargo release settings ([36c698c](https://github.com/vultr/graphyne/-/commit/36c698c6951a94a66d10b20e47c082f831d72bc5))
+
 ## [0.1.1](https://github.com/vultr/graphyne/-/compare/v0.1.0..v0.1.1) - 2025-10-08
 
 - ⛰️ (feat) add insta filters, remove TestableTcpStream wrapper, and split tests ([2292afe](https://github.com/vultr/graphyne/-/commit/2292afe061846161639ede2cf303a598b4dd4940))
+- 🏗️ Release v0.1.1 ([65dc16e](https://github.com/vultr/graphyne/-/commit/65dc16ebd8678265fcb3d414d3251f52ea44153e))
 - 🏗️ Update README.md ([64b65b2](https://github.com/vultr/graphyne/-/commit/64b65b2fdf1715dd7e5336a305cb5b912a46a243))
 
 ## [0.1.0](https://github.com/vultr/graphyne/-/commits/v0.1.0) - 2025-10-08
