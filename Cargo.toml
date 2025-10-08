@@ -1,7 +1,11 @@
 [package]
-name = "graphite-rs"
+name = "graphyne"
 version = "0.1.0"
 edition = "2024"
 description = "A simple rust client for sending messages to Graphite"
 
 [dependencies]
+bon = "3.8.1"
+
+[dev-dependencies]
+insta = "1.43.2"

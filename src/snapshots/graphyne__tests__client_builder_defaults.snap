@@ -1,0 +1,17 @@
+---
+source: src/lib.rs
+assertion_line: 211
+expression: client
+---
+GraphiteClient {
+    connection: TcpStream {
+        peer_addr: Some(
+            127.0.0.1:20031,
+        ),
+    },
+    sock_addr: 127.0.0.1:20031,
+    _address: "127.0.0.1",
+    _port: 20031,
+    retries: 3,
+    timeout: 5s,
+}
