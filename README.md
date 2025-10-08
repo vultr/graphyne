@@ -13,7 +13,13 @@ cargo add graphyne
 ```rust
 let host = "127.0.0.1";
 let port: u16 = 2023;
-let client = GraphiteClient.new(host, port).unwrap();
+let client = GraphiteClient::builder()
+    .address(host)
+    .port(port)
+    .retries(3)
+    .timeout(Duration::from_secs(3))
+    .build()
+    .unwrap();
 ```
 
 ### Construct a GraphiteMessage
@@ -30,7 +36,7 @@ client.send_message(&message);
 
 ## Known limitations
 
-- `GraphiteClient::new()` will fail when passed a DNS name instead of IP address.
+- `GraphiteClient` will fail when passed a DNS name instead of IP address.
 
 ## Contributing
 We welcome contributions, please open a pull request.
