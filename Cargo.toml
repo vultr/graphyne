@@ -8,4 +8,4 @@ description = "A simple rust client for sending messages to Graphite"
 bon = "3.8.1"
 
 [dev-dependencies]
-insta = "1.43.2"
+insta = { version = "1.43.2", features = ["filters"] }

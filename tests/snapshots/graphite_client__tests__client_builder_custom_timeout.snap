@@ -1,13 +1,13 @@
 ---
-source: src/lib.rs
-assertion_line: 241
+source: tests/graphite_client.rs
+assertion_line: 82
 expression: client
 ---
 GraphiteClient {
     connection: TcpStream {
-        peer_addr: Some(
-            127.0.0.1:20033,
-        ),
+        addr: <EPHEMERAL>,
+        peer: 127.0.0.1:20033,
+        fd: <EPHEMERAL>,
     },
     sock_addr: 127.0.0.1:20033,
     _address: "127.0.0.1",

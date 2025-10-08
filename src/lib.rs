@@ -14,7 +14,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug)]
 pub struct GraphiteClient {
     // TCP sock with Graphite server
-    connection: TestableTcpStream,
+    connection: TcpStream,
     // Socket address stored for reconnects
     sock_addr: SocketAddr,
     // Configuration
@@ -40,7 +40,7 @@ impl GraphiteClient {
         let connection = TcpStream::connect_timeout(&sock_addr, timeout)?;
 
         Ok(Self {
-            connection: TestableTcpStream(connection),
+            connection,
             sock_addr,
             _address: address,
             _port: port,
@@ -56,7 +56,7 @@ impl GraphiteClient {
             let connect = TcpStream::connect_timeout(&self.sock_addr, self.timeout);
             match connect {
                 Ok(connect) => {
-                    self.connection = TestableTcpStream(connect);
+                    self.connection = connect;
                     return Ok(());
                 }
                 Err(err) => last_err = err,
@@ -72,7 +72,7 @@ impl GraphiteClient {
         let mut last_err: Error = Error::last_os_error();
         let mut i = 0;
         while i < self.retries {
-            let res = self.connection.0.write(msg.to_string().as_bytes());
+            let res = self.connection.write(msg.to_string().as_bytes());
             match res {
                 Ok(size) => return Ok(size),
                 Err(err) => last_err = err,
@@ -89,7 +89,7 @@ impl GraphiteClient {
 
 impl Drop for GraphiteClient {
     fn drop(&mut self) {
-        let _ = self.connection.0.shutdown(std::net::Shutdown::Both);
+        let _ = self.connection.shutdown(std::net::Shutdown::Both);
     }
 }
 
@@ -155,116 +155,5 @@ impl From<Error> for GraphiteError {
         GraphiteError {
             msg: err.to_string(),
         }
-    }
-}
-
-/// Wrapper for TcpStream for a better Debug impl for snapshots
-#[cfg_attr(not(test), derive(Debug))]
-struct TestableTcpStream(TcpStream);
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::net::TcpListener;
-
-    impl fmt::Debug for TestableTcpStream {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let peer = self.0.peer_addr().ok();
-            f.debug_struct("TcpStream")
-                .field("peer_addr", &peer)
-                .finish()
-        }
-    }
-
-    // Dummy listener that accepts connections
-    struct DummyGraphiteServer {
-        _handle: std::thread::JoinHandle<()>,
-    }
-
-    impl DummyGraphiteServer {
-        fn start(port: u16) -> Self {
-            let handle = std::thread::spawn(move || {
-                let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).unwrap();
-                while let Ok((_stream, _addr)) = listener.accept() {
-                    // Just accept and drop the connection
-                }
-            });
-
-            // pause to start -- seems to be a race without waiting
-            std::thread::sleep(Duration::from_millis(50));
-
-            Self { _handle: handle }
-        }
-    }
-
-    #[test]
-    fn test_client_builder_defaults() {
-        let port = 20031;
-        let _ = DummyGraphiteServer::start(port);
-
-        let client = GraphiteClient::builder()
-            .address("127.0.0.1")
-            .port(port)
-            .build()
-            .unwrap();
-
-        insta::assert_debug_snapshot!(client);
-    }
-
-    #[test]
-    fn test_client_builder_custom_retries() {
-        let port = 20032;
-        let _ = DummyGraphiteServer::start(port);
-
-        let client = GraphiteClient::builder()
-            .address("127.0.0.1")
-            .port(port)
-            .retries(10)
-            .build()
-            .unwrap();
-
-        insta::assert_debug_snapshot!(client);
-    }
-
-    #[test]
-    fn test_client_builder_custom_timeout() {
-        let port = 20033;
-        let _ = DummyGraphiteServer::start(port);
-
-        let client = GraphiteClient::builder()
-            .address("127.0.0.1")
-            .port(port)
-            .timeout(Duration::from_millis(100))
-            .build()
-            .unwrap();
-
-        insta::assert_debug_snapshot!(client);
-    }
-
-    #[test]
-    fn test_client_builder_all_options() {
-        let port = 20034;
-        let _ = DummyGraphiteServer::start(port);
-
-        let client = GraphiteClient::builder()
-            .address("127.0.0.1")
-            .port(port)
-            .retries(7)
-            .timeout(Duration::from_secs(3))
-            .build()
-            .unwrap();
-
-        insta::assert_debug_snapshot!(client);
-    }
-
-    #[test]
-    fn test_connection_failure() {
-        let result = GraphiteClient::builder()
-            .address("127.0.0.1")
-            .port(6969)
-            .timeout(Duration::from_millis(100))
-            .build();
-
-        assert!(result.is_err());
     }
 }
