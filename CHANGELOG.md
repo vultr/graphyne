@@ -3,6 +3,11 @@
 All notable changes to this project will be documented in this file.
 
 
+## [0.2.1](https://github.com/vultr/graphyne/-/compare/v0.2.0..0.2.1) - 2025-10-09
+
+- 🐛 Fix changelog generation ([8f62ae2](https://github.com/vultr/graphyne/-/commit/8f62ae222ee5e422dc88d0853512b88ab7181e39))
+- 📚 Add fleshed out docs and readme ([fb15f7d](https://github.com/vultr/graphyne/-/commit/fb15f7dfef7f366f86da2d6eab0f3f9d9aa1d04b))
+
 ## [0.2.0](https://github.com/vultr/graphyne/-/compare/v0.1.1..v0.2.0) - 2025-10-08
 
 - 🏗️ Release graphyne version 0.2.0 ([c48bc02](https://github.com/vultr/graphyne/-/commit/c48bc028a3cc13afebb4e09d8e6cf39b69d2d546))
