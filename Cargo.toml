@@ -1,6 +1,6 @@
 [package]
 name = "graphyne"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 description = "A simple rust client for sending messages to Graphite"
 documentation = "https://docs.rs/graphyne"
