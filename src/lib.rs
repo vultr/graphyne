@@ -375,10 +375,7 @@ impl GraphiteClient {
             let res = self.connection.write_all(data.as_bytes());
             match res {
                 Ok(_) => return Ok(data.len()),
-                Err(err) => {
-                    eprintln!("Transmission error: {err}");
-                    last_err = err;
-                }
+                Err(err) => last_err = err,
             }
             // In case the socket has been broken somewhere, reconnect it.
             self.reconnect()?;
@@ -399,10 +396,7 @@ impl GraphiteClient {
             let res = self.connection.write_all(combined.as_bytes());
             match res {
                 Ok(_) => return Ok(combined.len()),
-                Err(err) => {
-                    eprintln!("Transmission error: {err}");
-                    last_err = err;
-                }
+                Err(err) => last_err = err,
             }
             // In case the socket has been broken somewhere, reconnect it.
             self.reconnect()?;
