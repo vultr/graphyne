@@ -65,6 +65,9 @@ const DEFAULT_RETRIES: u8 = 3;
 /// This timeout applies to both initial connections and reconnection attempts.
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Default time to live for TCP packets
+const DEFAULT_TCP_TTL: Duration = Duration::from_secs(240);
+
 /// A client for sending metrics to a Graphite Carbon daemon.
 ///
 /// `GraphiteClient` maintains a persistent TCP connection to a Graphite server and provides
@@ -147,6 +150,9 @@ pub struct GraphiteClient {
     /// This timeout is applied to each individual connection attempt during both
     /// initial connection and reconnection operations.
     timeout: Duration,
+
+    /// Time to live for tcp packets.
+    tcp_ttl: Duration,
 }
 
 #[bon]
@@ -223,10 +229,16 @@ impl GraphiteClient {
         /// initial connection and reconnection operations.
         #[builder(default = DEFAULT_TIMEOUT)]
         timeout: Duration,
+
+        /// Time to live for tcp packets.
+        #[builder(default = DEFAULT_TCP_TTL)]
+        tcp_ttl: Duration,
     ) -> Result<Self, GraphiteError> {
         let address = address.into();
         let sock_addr = SocketAddr::new(IpAddr::from_str(&address)?, port);
         let connection = TcpStream::connect_timeout(&sock_addr, timeout)?;
+        connection.set_ttl(tcp_ttl.as_secs() as u32)?;
+        connection.set_nodelay(true)?;
 
         Ok(Self {
             connection,
@@ -235,6 +247,7 @@ impl GraphiteClient {
             _port: port,
             retries,
             timeout,
+            tcp_ttl,
         })
     }
 
@@ -275,6 +288,8 @@ impl GraphiteClient {
             let connect = TcpStream::connect_timeout(&self.sock_addr, self.timeout);
             match connect {
                 Ok(connect) => {
+                    connect.set_ttl(self.tcp_ttl.as_secs() as u32)?;
+                    connect.set_nodelay(true)?;
                     self.connection = connect;
                     return Ok(());
                 }
@@ -357,6 +372,27 @@ impl GraphiteClient {
         let mut i = 0;
         while i < self.retries {
             let res = self.connection.write(msg.to_string().as_bytes());
+            match res {
+                Ok(size) => return Ok(size),
+                Err(err) => last_err = err,
+            }
+            // In case the socket has been broken somewhere, reconnect it.
+            self.reconnect()?;
+            i += 1;
+        }
+        Err(GraphiteError {
+            msg: format!("Graphite Error: {last_err}"),
+        })
+    }
+
+    pub fn send_batch_message(&mut self, msgs: &[GraphiteMessage]) -> Result<usize, GraphiteError> {
+        let mut last_err: Error = Error::last_os_error();
+
+        let combined: String = msgs.iter().map(ToString::to_string).collect();
+
+        let mut i = 0;
+        while i < self.retries {
+            let res = self.connection.write(combined.as_bytes());
             match res {
                 Ok(size) => return Ok(size),
                 Err(err) => last_err = err,
