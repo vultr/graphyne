@@ -370,11 +370,15 @@ impl GraphiteClient {
     pub fn send_message(&mut self, msg: &GraphiteMessage) -> Result<usize, GraphiteError> {
         let mut last_err: Error = Error::last_os_error();
         let mut i = 0;
+        let data = msg.to_string();
         while i < self.retries {
-            let res = self.connection.write(msg.to_string().as_bytes());
+            let res = self.connection.write_all(data.as_bytes());
             match res {
-                Ok(size) => return Ok(size),
-                Err(err) => last_err = err,
+                Ok(_) => return Ok(data.len()),
+                Err(err) => {
+                    eprintln!("Transmission error: {err}");
+                    last_err = err;
+                }
             }
             // In case the socket has been broken somewhere, reconnect it.
             self.reconnect()?;
@@ -392,10 +396,13 @@ impl GraphiteClient {
 
         let mut i = 0;
         while i < self.retries {
-            let res = self.connection.write(combined.as_bytes());
+            let res = self.connection.write_all(combined.as_bytes());
             match res {
-                Ok(size) => return Ok(size),
-                Err(err) => last_err = err,
+                Ok(_) => return Ok(combined.len()),
+                Err(err) => {
+                    eprintln!("Transmission error: {err}");
+                    last_err = err;
+                }
             }
             // In case the socket has been broken somewhere, reconnect it.
             self.reconnect()?;
