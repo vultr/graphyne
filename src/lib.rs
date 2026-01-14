@@ -510,6 +510,36 @@ impl GraphiteMessage {
                 .as_secs(),
         }
     }
+
+    /// Creates a new metric message with the provided timestamp.
+    ///
+    ///
+    /// # Arguments
+    ///
+    /// * `metric_path` - The hierarchical path for this metric (e.g., "app.cpu.usage")
+    /// * `value` - The metric value as a string (e.g., "42" or "3.14")
+    /// * `ts` - The metric timestamp as a unix epoch.
+    /// # Examples
+    ///
+    /// ```rust
+    /// use graphyne::GraphiteMessage;
+    ///
+    /// // Integer value
+    /// let count = GraphiteMessage::new_with_ts("requests.count", "150", 1768405993);
+    ///
+    /// // Floating point value
+    /// let temp = GraphiteMessage::new_with_ts("sensors.temperature", "23.5", 1768405993);
+    ///
+    /// // Large value
+    /// let bytes = GraphiteMessage::new_with_ts("network.bytes.sent", "1048576", 1768405993);
+    /// ```
+    pub fn new_with_ts(metric_path: &str, value: &str, ts: u64) -> Self {
+        Self {
+            metric_path: metric_path.to_string(),
+            value: value.to_string(),
+            timestamp: ts,
+        }
+    }
 }
 
 impl fmt::Display for GraphiteMessage {
