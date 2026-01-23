@@ -2,21 +2,28 @@
 //!
 //! A simple, reliable Rust client for sending metrics to [Graphite](https://graphiteapp.org/) Carbon daemons.
 //!
-//! Graphyne provides a straightforward API for sending time-series metrics to Graphite using the
-//! plaintext TCP protocol. It features automatic reconnection, configurable retry logic, and an
-//! ergonomic builder pattern for easy configuration.
+//! Graphyne provides a straightforward API for sending time-series metrics to Graphite using either
+//! the plaintext TCP or UDP protocol. It features automatic reconnection (TCP), configurable retry
+//! logic, and an ergonomic builder pattern for easy configuration.
 //!
 //! ## Quick Start
 //!
 //! ```rust,no_run
-//! use graphyne::{GraphiteClient, GraphiteMessage};
+//! use graphyne::{GraphiteClient, GraphiteMessage, Protocol};
 //! use std::time::Duration;
 //!
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a client
+//! // Create a TCP client (default)
 //! let mut client = GraphiteClient::builder()
 //!     .address("127.0.0.1")
 //!     .port(2003)
+//!     .build()?;
+//!
+//! // Or create a UDP client
+//! let mut udp_client = GraphiteClient::builder()
+//!     .address("127.0.0.1")
+//!     .port(2003)
+//!     .protocol(Protocol::Udp)
 //!     .build()?;
 //!
 //! // Send a metric
@@ -29,13 +36,14 @@
 //! ## Features
 //!
 //! - **Builder Pattern**: Intuitive, type-safe configuration
-//! - **Auto-reconnection**: Automatic retry and reconnection on failure
+//! - **TCP & UDP Support**: Choose between reliable TCP or high-performance UDP
+//! - **Auto-reconnection**: Automatic retry and reconnection on failure (TCP)
 //! - **Zero-copy Writes**: Efficient metric transmission
 //! - **Timestamp Generation**: Automatic Unix timestamp creation
 //!
 //! ## Protocol
 //!
-//! Graphyne uses the Graphite plaintext protocol over TCP. Each metric is formatted as:
+//! Graphyne uses the Graphite plaintext protocol over TCP or UDP. Each metric is formatted as:
 //! ```text
 //! metric.path.name value timestamp\n
 //! ```
@@ -49,7 +57,7 @@ use bon::bon;
 use std::{
     fmt,
     io::{Error, Write},
-    net::{AddrParseError, IpAddr, SocketAddr, TcpStream},
+    net::{AddrParseError, IpAddr, SocketAddr, TcpStream, UdpSocket},
     str::FromStr,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -68,17 +76,70 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default time to live for TCP packets
 const DEFAULT_TCP_TTL: Duration = Duration::from_secs(240);
 
+/// Protocol to use for sending metrics to Graphite.
+///
+/// # TCP vs UDP
+///
+/// - **TCP**: Reliable delivery with connection management and automatic retry.
+///   Use for critical metrics where delivery must be guaranteed.
+/// - **UDP**: Fire-and-forget delivery with no connection overhead.
+///   Use for high-throughput scenarios where occasional metric loss is acceptable.
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use graphyne::{GraphiteClient, Protocol};
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// // TCP for critical metrics
+/// let tcp_client = GraphiteClient::builder()
+///     .address("127.0.0.1")
+///     .port(2003)
+///     .protocol(Protocol::Tcp)
+///     .build()?;
+///
+/// // UDP for high-volume metrics
+/// let udp_client = GraphiteClient::builder()
+///     .address("127.0.0.1")
+///     .port(2003)
+///     .protocol(Protocol::Udp)
+///     .build()?;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum Protocol {
+    #[default]
+    Tcp,
+    Udp,
+}
+
+/// Connection type for the Graphite client.
+#[derive(Debug)]
+enum Connection {
+    Tcp(TcpStream),
+    Udp(UdpSocket),
+}
+
 /// A client for sending metrics to a Graphite Carbon daemon.
 ///
-/// `GraphiteClient` maintains a persistent TCP connection to a Graphite server and provides
-/// methods for sending metrics. It automatically handles connection failures with configurable
-/// retry logic.
+/// `GraphiteClient` maintains a connection (TCP) or socket (UDP) to a Graphite server and provides
+/// methods for sending metrics. For TCP, it automatically handles connection failures with
+/// configurable retry logic.
+///
+/// # Protocol Selection
+///
+/// The client supports both TCP and UDP protocols:
+/// - **TCP** (default): Provides reliable delivery with automatic reconnection
+/// - **UDP**: Provides higher throughput with no connection overhead
 ///
 /// # Connection Management
 ///
-/// The client maintains a single TCP connection which is automatically reestablished if it
+/// **TCP**: The client maintains a persistent connection which is automatically reestablished if it
 /// fails. When `send_message` encounters a connection error, it will attempt to reconnect
 /// up to `retries` times before failing.
+///
+/// **UDP**: No connection management is needed; packets are sent directly without retries.
 ///
 /// # Thread Safety
 ///
@@ -87,15 +148,16 @@ const DEFAULT_TCP_TTL: Duration = Duration::from_secs(240);
 ///
 /// # Examples
 ///
-/// ## Basic Usage
+/// ## TCP Usage
 ///
 /// ```rust,no_run
-/// use graphyne::{GraphiteClient, GraphiteMessage};
+/// use graphyne::{GraphiteClient, GraphiteMessage, Protocol};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut client = GraphiteClient::builder()
 ///     .address("127.0.0.1")
 ///     .port(2003)
+///     .protocol(Protocol::Tcp)
 ///     .build()?;
 ///
 /// let msg = GraphiteMessage::new("app.requests", "100");
@@ -104,33 +166,29 @@ const DEFAULT_TCP_TTL: Duration = Duration::from_secs(240);
 /// # }
 /// ```
 ///
-/// ## Custom Configuration
+/// ## UDP Usage
 ///
 /// ```rust,no_run
-/// use graphyne::GraphiteClient;
-/// use std::time::Duration;
+/// use graphyne::{GraphiteClient, GraphiteMessage, Protocol};
 ///
 /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let mut client = GraphiteClient::builder()
 ///     .address("127.0.0.1")
 ///     .port(2003)
-///     .retries(5)                       // Try up to 5 times
-///     .timeout(Duration::from_secs(10)) // 10 second timeout
+///     .protocol(Protocol::Udp)
 ///     .build()?;
+///
+/// let msg = GraphiteMessage::new("app.requests", "100");
+/// client.send_message(&msg)?;
 /// # Ok(())
 /// # }
 /// ```
 #[derive(Debug)]
 pub struct GraphiteClient {
-    /// The active TCP connection to the Graphite server.
-    ///
-    /// This connection is used for all metric transmission and may be replaced
-    /// if reconnection is necessary.
-    connection: TcpStream,
+    /// The active connection (TCP or UDP) to the Graphite server.
+    connection: Connection,
 
-    /// Socket address used for reconnection attempts.
-    ///
-    /// Stored to enable reconnection without needing to re-parse the address.
+    /// Socket address used for reconnection attempts and UDP sends.
     sock_addr: SocketAddr,
 
     /// Original address string (currently unused but reserved for future DNS support).
@@ -139,19 +197,22 @@ pub struct GraphiteClient {
     /// Original port number (currently unused but reserved for future use).
     _port: u16,
 
-    /// Number of times to retry failed operations.
+    /// Protocol being used (TCP or UDP).
+    protocol: Protocol,
+
+    /// Number of times to retry failed operations (TCP only).
     ///
     /// This applies to both connection attempts and send operations. A value of 3
     /// means up to 4 total attempts (1 initial + 3 retries).
     retries: u8,
 
-    /// Timeout duration for connection attempts.
+    /// Timeout duration for connection attempts (TCP only).
     ///
     /// This timeout is applied to each individual connection attempt during both
     /// initial connection and reconnection operations.
     timeout: Duration,
 
-    /// Time to live for tcp packets.
+    /// Time to live for tcp packets (TCP only).
     tcp_ttl: Duration,
 }
 
@@ -159,27 +220,31 @@ pub struct GraphiteClient {
 impl GraphiteClient {
     /// Creates a new `GraphiteClient` using the builder pattern.
     ///
-    /// This constructor establishes an initial TCP connection to the Graphite server.
-    /// If the connection fails, it returns a `GraphiteError`.
+    /// This constructor establishes an initial connection (TCP) or creates a socket (UDP)
+    /// to the Graphite server. If the operation fails, it returns a `GraphiteError`.
     ///
     /// # Arguments
     ///
     /// * `address` - IP address of the Graphite server (IPv4 or IPv6). **Note**: DNS hostnames
     ///   are not currently supported.
-    /// * `port` - TCP port number where the Carbon daemon is listening (typically 2003)
-    /// * `retries` - Number of retry attempts for failed operations (default: 3)
-    /// * `timeout` - Maximum duration to wait for connection attempts (default: 5 seconds)
+    /// * `port` - Port number where the Carbon daemon is listening (typically 2003 for TCP,
+    ///   2003 for UDP plaintext)
+    /// * `protocol` - Protocol to use: `Protocol::Tcp` (default) or `Protocol::Udp`
+    /// * `retries` - Number of retry attempts for failed operations (default: 3, TCP only)
+    /// * `timeout` - Maximum duration to wait for connection attempts (default: 5 seconds, TCP only)
+    /// * `tcp_ttl` - Time to live for TCP packets (default: 240 seconds, TCP only)
     ///
     /// # Returns
     ///
-    /// Returns `Ok(GraphiteClient)` if the connection succeeds, or `Err(GraphiteError)` if:
+    /// Returns `Ok(GraphiteClient)` if successful, or `Err(GraphiteError)` if:
     /// - The address cannot be parsed as an IP address
-    /// - The connection times out
-    /// - The connection is refused
+    /// - The connection times out (TCP)
+    /// - The connection is refused (TCP)
+    /// - The socket cannot be created (UDP)
     ///
     /// # Examples
     ///
-    /// ## With defaults
+    /// ## TCP with defaults
     ///
     /// ```rust,no_run
     /// use graphyne::GraphiteClient;
@@ -193,16 +258,32 @@ impl GraphiteClient {
     /// # }
     /// ```
     ///
-    /// ## With custom retry and timeout
+    /// ## UDP for high-throughput
     ///
     /// ```rust,no_run
-    /// use graphyne::GraphiteClient;
+    /// use graphyne::{GraphiteClient, Protocol};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let client = GraphiteClient::builder()
+    ///     .address("10.0.0.5")
+    ///     .port(2003)
+    ///     .protocol(Protocol::Udp)
+    ///     .build()?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// ## TCP with custom retry and timeout
+    ///
+    /// ```rust,no_run
+    /// use graphyne::{GraphiteClient, Protocol};
     /// use std::time::Duration;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let client = GraphiteClient::builder()
     ///     .address("192.168.1.100")
     ///     .port(2003)
+    ///     .protocol(Protocol::Tcp)
     ///     .retries(10)
     ///     .timeout(Duration::from_millis(500))
     ///     .build()?;
@@ -215,36 +296,51 @@ impl GraphiteClient {
         ///
         /// **Note**: DNS hostnames are not currently supported.
         address: impl Into<String>,
-        /// TCP port number where the Carbon daemon is listening (typically 2003)
+        /// Port number where the Carbon daemon is listening (typically 2003)
         port: u16,
-        /// Number of times to retry failed operations.
+        /// Protocol to use: TCP (default) or UDP
+        #[builder(default = Protocol::default())]
+        protocol: Protocol,
+        /// Number of times to retry failed operations (TCP only).
         ///
         /// This applies to both connection attempts and send operations.
         /// A value of 3 means up to 4 total attempts (1 initial + 3 retries).
         #[builder(default = DEFAULT_RETRIES)]
         retries: u8,
-        /// Timeout duration for connection attempts.
+        /// Timeout duration for connection attempts (TCP only).
         ///
         /// This timeout is applied to each individual connection attempt during both
         /// initial connection and reconnection operations.
         #[builder(default = DEFAULT_TIMEOUT)]
         timeout: Duration,
 
-        /// Time to live for tcp packets.
+        /// Time to live for tcp packets (TCP only).
         #[builder(default = DEFAULT_TCP_TTL)]
         tcp_ttl: Duration,
     ) -> Result<Self, GraphiteError> {
         let address = address.into();
         let sock_addr = SocketAddr::new(IpAddr::from_str(&address)?, port);
-        let connection = TcpStream::connect_timeout(&sock_addr, timeout)?;
-        connection.set_ttl(tcp_ttl.as_secs() as u32)?;
-        connection.set_nodelay(true)?;
+
+        let connection = match protocol {
+            Protocol::Tcp => {
+                let tcp_stream = TcpStream::connect_timeout(&sock_addr, timeout)?;
+                tcp_stream.set_ttl(tcp_ttl.as_secs() as u32)?;
+                tcp_stream.set_nodelay(true)?;
+                Connection::Tcp(tcp_stream)
+            }
+            Protocol::Udp => {
+                let udp_socket = UdpSocket::bind("0.0.0.0:0")?;
+                udp_socket.connect(sock_addr)?;
+                Connection::Udp(udp_socket)
+            }
+        };
 
         Ok(Self {
             connection,
             sock_addr,
             _address: address,
             _port: port,
+            protocol,
             retries,
             timeout,
             tcp_ttl,
@@ -282,15 +378,20 @@ impl GraphiteClient {
     /// # }
     /// ```
     pub fn reconnect(&mut self) -> Result<(), GraphiteError> {
+        // UDP doesn't need reconnection
+        if self.protocol == Protocol::Udp {
+            return Ok(());
+        }
+
         let mut last_err: Error = Error::last_os_error();
         let mut i = 0;
         while i < self.retries {
             let connect = TcpStream::connect_timeout(&self.sock_addr, self.timeout);
             match connect {
-                Ok(connect) => {
-                    connect.set_ttl(self.tcp_ttl.as_secs() as u32)?;
-                    connect.set_nodelay(true)?;
-                    self.connection = connect;
+                Ok(tcp) => {
+                    tcp.set_ttl(self.tcp_ttl.as_secs() as u32)?;
+                    tcp.set_nodelay(true)?;
+                    self.connection = Connection::Tcp(tcp);
                     return Ok(());
                 }
                 Err(err) => last_err = err,
@@ -304,9 +405,13 @@ impl GraphiteClient {
 
     /// Sends a metric message to the Graphite server.
     ///
-    /// This method writes the formatted metric to the TCP connection. If the write fails
-    /// (e.g., due to a broken connection), it automatically attempts to reconnect and retry
-    /// the send operation up to `retries` times.
+    /// This method writes the formatted metric to the connection. Behavior differs by protocol:
+    ///
+    /// **TCP**: If the write fails (e.g., due to a broken connection), it automatically attempts
+    /// to reconnect and retry the send operation up to `retries` times.
+    ///
+    /// **UDP**: Sends the metric as a datagram. No retry logic is applied; if the send fails,
+    /// an error is returned immediately.
     ///
     /// # Arguments
     ///
@@ -315,26 +420,20 @@ impl GraphiteClient {
     /// # Returns
     ///
     /// Returns `Ok(usize)` with the number of bytes written if successful, or
-    /// `Err(GraphiteError)` if all retry attempts fail.
-    ///
-    /// # Connection Behavior
-    ///
-    /// 1. Attempts to write the message to the existing connection
-    /// 2. If write fails, calls `reconnect()` to establish a new connection
-    /// 3. Retries the write operation on the new connection
-    /// 4. Repeats steps 2-3 up to `retries` times
+    /// `Err(GraphiteError)` if all retry attempts fail (TCP) or the send fails (UDP).
     ///
     /// # Examples
     ///
-    /// ## Single metric
+    /// ## TCP: Single metric with retry
     ///
     /// ```rust,no_run
-    /// use graphyne::{GraphiteClient, GraphiteMessage};
+    /// use graphyne::{GraphiteClient, GraphiteMessage, Protocol};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let mut client = GraphiteClient::builder()
     ///     .address("127.0.0.1")
     ///     .port(2003)
+    ///     .protocol(Protocol::Tcp)
     ///     .build()?;
     ///
     /// let msg = GraphiteMessage::new("cpu.usage", "45.2");
@@ -344,7 +443,75 @@ impl GraphiteClient {
     /// # }
     /// ```
     ///
-    /// ## Multiple metrics
+    /// ## UDP: High-throughput metrics
+    ///
+    /// ```rust,no_run
+    /// use graphyne::{GraphiteClient, GraphiteMessage, Protocol};
+    ///
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut client = GraphiteClient::builder()
+    ///     .address("127.0.0.1")
+    ///     .port(2003)
+    ///     .protocol(Protocol::Udp)
+    ///     .build()?;
+    ///
+    /// let msg = GraphiteMessage::new("requests.count", "1000");
+    /// client.send_message(&msg)?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn send_message(&mut self, msg: &GraphiteMessage) -> Result<usize, GraphiteError> {
+        let data = msg.to_string();
+
+        match &mut self.connection {
+            Connection::Udp(udp_socket) => {
+                udp_socket.send(data.as_bytes())?;
+                Ok(data.len())
+            }
+            Connection::Tcp(_) => {
+                let mut last_err: Error = Error::last_os_error();
+                // Handle TCP with retries
+                for _ in 0..self.retries {
+                    if let Connection::Tcp(tcp_stream) = &mut self.connection {
+                        let res = tcp_stream.write_all(data.as_bytes());
+                        match res {
+                            Ok(_) => return Ok(data.len()),
+                            Err(err) => {
+                                last_err = err;
+                                // Reconnect after error
+                                self.reconnect()?;
+                            }
+                        }
+                    }
+                }
+
+                Err(GraphiteError {
+                    msg: format!("Graphite Error: {last_err}"),
+                })
+            }
+        }
+    }
+
+    /// Sends multiple metric messages in a single operation.
+    ///
+    /// This method combines multiple messages and sends them together, which can be more
+    /// efficient than sending messages individually.
+    ///
+    /// **TCP**: Messages are concatenated and sent over the TCP stream with retry logic.
+    ///
+    /// **UDP**: Messages are concatenated and sent as a single datagram. Note that large
+    /// batches may exceed UDP packet size limits (typically ~64KB).
+    ///
+    /// # Arguments
+    ///
+    /// * `msgs` - A slice of `GraphiteMessage` references to send
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(usize)` with the total number of bytes written if successful, or
+    /// `Err(GraphiteError)` if the operation fails.
+    ///
+    /// # Examples
     ///
     /// ```rust,no_run
     /// use graphyne::{GraphiteClient, GraphiteMessage};
@@ -361,60 +528,49 @@ impl GraphiteClient {
     ///     GraphiteMessage::new("server1.disk", "65"),
     /// ];
     ///
-    /// for metric in &metrics {
-    ///     client.send_message(metric)?;
-    /// }
+    /// client.send_batch_message(&metrics)?;
     /// # Ok(())
     /// # }
     /// ```
-    pub fn send_message(&mut self, msg: &GraphiteMessage) -> Result<usize, GraphiteError> {
-        let mut last_err: Error = Error::last_os_error();
-        let mut i = 0;
-        let data = msg.to_string();
-        while i < self.retries {
-            let res = self.connection.write_all(data.as_bytes());
-            match res {
-                Ok(_) => return Ok(data.len()),
-                Err(err) => last_err = err,
-            }
-            // In case the socket has been broken somewhere, reconnect it.
-            self.reconnect()?;
-            i += 1;
-        }
-        Err(GraphiteError {
-            msg: format!("Graphite Error: {last_err}"),
-        })
-    }
-
     pub fn send_batch_message(&mut self, msgs: &[GraphiteMessage]) -> Result<usize, GraphiteError> {
-        let mut last_err: Error = Error::last_os_error();
-
         let combined: String = msgs.iter().map(ToString::to_string).collect();
 
-        let mut i = 0;
-        while i < self.retries {
-            let res = self.connection.write_all(combined.as_bytes());
-            match res {
-                Ok(_) => return Ok(combined.len()),
-                Err(err) => last_err = err,
+        match &mut self.connection {
+            Connection::Udp(udp_socket) => {
+                udp_socket.send(combined.as_bytes())?;
+                Ok(combined.len())
             }
-            // In case the socket has been broken somewhere, reconnect it.
-            self.reconnect()?;
-            i += 1;
+            Connection::Tcp(_) => {
+                let mut last_err: Error = Error::last_os_error();
+                // Handle TCP with retries
+                for _ in 0..self.retries {
+                    if let Connection::Tcp(tcp_stream) = &mut self.connection {
+                        let res = tcp_stream.write_all(combined.as_bytes());
+                        match res {
+                            Ok(_) => return Ok(combined.len()),
+                            Err(err) => {
+                                last_err = err;
+                                // Reconnect after error
+                                self.reconnect()?;
+                            }
+                        }
+                    }
+                }
+
+                Err(GraphiteError {
+                    msg: format!("Graphite Error: {last_err}"),
+                })
+            }
         }
-        Err(GraphiteError {
-            msg: format!("Graphite Error: {last_err}"),
-        })
     }
 }
 
 impl Drop for GraphiteClient {
-    /// Gracefully closes the TCP connection when the client is dropped.
-    ///
-    /// This ensures that the connection is properly shut down, preventing resource leaks.
     /// Any errors during shutdown are silently ignored.
     fn drop(&mut self) {
-        let _ = self.connection.shutdown(std::net::Shutdown::Both);
+        if let Connection::Tcp(tcp_stream) = &self.connection {
+            let _ = tcp_stream.shutdown(std::net::Shutdown::Both);
+        }
     }
 }
 
