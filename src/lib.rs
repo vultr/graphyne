@@ -185,7 +185,7 @@ enum Connection {
 /// ```
 #[derive(Debug)]
 pub struct GraphiteClient {
-    /// The active connection (TCP or UDP) to the Graphite server.
+    /// The connection to the Graphite server.
     connection: Connection,
 
     /// Socket address used for reconnection attempts and UDP sends.
