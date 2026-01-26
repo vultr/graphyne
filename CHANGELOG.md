@@ -3,8 +3,18 @@
 All notable changes to this project will be documented in this file.
 
 
-## [0.2.2](https://github.com/vultr/graphyne/-/compare/v0.2.1..0.2.2) - 2025-10-29
+## [0.2.4](https://github.com/vultr/graphyne/-/compare/v0.2.3..0.2.4) - 2026-01-26
 
+- ⛰️ Add udp support to GraphiteClient (#7) ([83c5802](https://github.com/vultr/graphyne/-/commit/83c5802d4a8d0451984e2956794f081792455ecd))
+
+## [0.2.3](https://github.com/vultr/graphyne/-/compare/v0.2.2..v0.2.3) - 2026-01-14
+
+- 🏗️ Release graphyne version 0.2.3 ([17a3a17](https://github.com/vultr/graphyne/-/commit/17a3a17d958a7cd1057ec1b7c8e0910752de2b25))
+- 🏗️ Add constructor with provided timestamp (#6) ([e884377](https://github.com/vultr/graphyne/-/commit/e8843779b108eff892bba5bb3db1a8b306aed9cf))
+
+## [0.2.2](https://github.com/vultr/graphyne/-/compare/v0.2.1..v0.2.2) - 2025-10-29
+
+- 🏗️ Release graphyne version 0.2.2 ([ff1ae8e](https://github.com/vultr/graphyne/-/commit/ff1ae8e39d003f339eb9881b30935f98b897cffb))
 - 🐛 Fix tcp bugs (#5) ([105c0dd](https://github.com/vultr/graphyne/-/commit/105c0ddfb24a7aae5fb989ccc699b201cea8f0e4))
 
 ## [0.2.1](https://github.com/vultr/graphyne/-/compare/v0.2.0..v0.2.1) - 2025-10-09
