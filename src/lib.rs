@@ -537,8 +537,44 @@ impl GraphiteClient {
 
         match &mut self.connection {
             Connection::Udp(udp_socket) => {
-                udp_socket.send(combined.as_bytes())?;
-                Ok(combined.len())
+                /// Maximum total payload size per UDP message.
+                const MAX_UDP_SIZE: usize = 1400;
+                let mut total_sent_bytes = 0;
+                let mut current_batch = String::new();
+
+                for msg in msgs {
+                    let msg_str = msg.to_string();
+                    if !current_batch.is_empty()
+                        && current_batch.len() + msg_str.len() > MAX_UDP_SIZE
+                    {
+                        udp_socket.send(current_batch.as_bytes())?;
+                        total_sent_bytes += current_batch.len();
+                        current_batch.clear();
+                    }
+
+                    // If the size of the message is larger than 1400 bytes, we need to send it
+                    // on its own with the understanding that it may be truncated during transmit.
+                    if msg_str.len() > MAX_UDP_SIZE {
+                        // Send any existing messages and clear the batch
+                        if !current_batch.is_empty() {
+                            udp_socket.send(current_batch.as_bytes())?;
+                            total_sent_bytes += current_batch.len();
+                            current_batch.clear();
+                        }
+
+                        udp_socket.send(msg_str.as_bytes())?;
+                        total_sent_bytes += msg_str.len();
+                    } else {
+                        current_batch.push_str(&msg_str);
+                    }
+                }
+
+                if !current_batch.is_empty() {
+                    udp_socket.send(current_batch.as_bytes())?;
+                    total_sent_bytes += current_batch.len();
+                }
+
+                Ok(total_sent_bytes)
             }
             Connection::Tcp(_) => {
                 let mut last_err: Error = Error::last_os_error();
