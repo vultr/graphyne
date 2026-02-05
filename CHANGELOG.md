@@ -3,9 +3,14 @@
 All notable changes to this project will be documented in this file.
 
 
-## [0.2.4](https://github.com/vultr/graphyne/-/compare/v0.2.3..0.2.4) - 2026-01-26
+## [0.2.5](https://github.com/vultr/graphyne/-/compare/v0.2.4..0.2.5) - 2026-02-05
+
+- 🐛 Chunk udp payloads to a maximum of 1400 bytes (#8) ([2cb9569](https://github.com/vultr/graphyne/-/commit/2cb956992f123bf2040de720306df431aefbdb92))
+
+## [0.2.4](https://github.com/vultr/graphyne/-/compare/v0.2.3..v0.2.4) - 2026-01-26
 
 - ⛰️ Add udp support to GraphiteClient (#7) ([83c5802](https://github.com/vultr/graphyne/-/commit/83c5802d4a8d0451984e2956794f081792455ecd))
+- 🏗️ Release graphyne version 0.2.4 ([8a23d9a](https://github.com/vultr/graphyne/-/commit/8a23d9ae7f8c0491203b4a28056a5b7c8269e679))
 
 ## [0.2.3](https://github.com/vultr/graphyne/-/compare/v0.2.2..v0.2.3) - 2026-01-14
 
